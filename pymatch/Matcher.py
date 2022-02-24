@@ -2,6 +2,7 @@ from __future__ import print_function
 from pymatch import *
 import pymatch.functions as uf
 
+
 class Matcher:
     """
     Matcher Class -- Match data for an observational study.
@@ -19,10 +20,9 @@ class Matcher:
         Name of dependent variable (the treatment)
     exclude : list  (optional)
         List of variables to ignore in regression/matching.
-        Useful for unique idenifiers
+        Useful for unique identifiers
     """
-
-    def __init__(self, test, control, yvar, formula=None, exclude=[]):
+    def __init__(self, test, control, yvar, formula=None, exclude=None):
         # configure plots for ipynb
         plt.rcParams["figure.figsize"] = (10, 5)
         # variables generated during matching
@@ -36,6 +36,8 @@ class Matcher:
         self.control_color = "#1F77B4"
         self.test_color = "#FF7F0E"
         self.yvar = yvar
+        if exclude is None:
+            exclude = []
         self.exclude = exclude + [self.yvar] + aux_match
         self.formula = formula
         self.nmodels = 1  # for now
@@ -45,8 +47,8 @@ class Matcher:
         self.data[yvar] = self.data[yvar].astype(int)  # should be binary 0, 1
         self.xvars = [i for i in self.data.columns if i not in self.exclude and i != yvar]
         self.data = self.data.dropna(subset=self.xvars)
-        self.matched_data = []
-        self.xvars_escaped = [ "Q('{}')".format(x) for x in self.xvars]
+        self.matched_data = pd.DataFrame()
+        self.xvars_escaped = ["Q('{}')".format(x) for x in self.xvars]
         self.yvar_escaped = "Q('{}')".format(self.yvar)
         self.y, self.X = patsy.dmatrices('{} ~ {}'.format(self.yvar_escaped, '+'.join(self.xvars_escaped)),
                                          data=self.data, return_type='dataframe')
@@ -62,10 +64,10 @@ class Matcher:
         print('n majority:', len(self.data[self.data[yvar] == self.majority]))
         print('n minority:', len(self.data[self.data[yvar] == self.minority]))
 
-        univalued_vars = [(var, len(set(self.test[var])) <= 1 and len(set(self.control[var])) <= 1) for var in self.xvars]
-        if any([uv[1] for uv in univalued_vars]):
-            raise Exception("Univalued variable(s) detected in test / control data: %s\n these require to be removed" %
-                            str([uv[0] for uv in univalued_vars if uv[1]]))
+        static_vars = [(var, len(set(self.test[var])) <= 1 and len(set(self.control[var])) <= 1) for var in self.xvars]
+        if any([uv[1] for uv in static_vars]):
+            raise Exception("Static variable(s) detected in test / control data: %s\n these require to be removed" %
+                            str([uv[0] for uv in static_vars if uv[1]]))
 
     def fit_scores(self, balance=True, nmodels=None, maxerrors=5):
         """
@@ -94,7 +96,7 @@ class Matcher:
             self.model_accuracy = []
         if not self.formula:
             # use all columns in the model
-            self.xvars_escaped = [ "Q('{}')".format(x) for x in self.xvars]
+            self.xvars_escaped = ["Q('{}')".format(x) for x in self.xvars]
             self.yvar_escaped = "Q('{}')".format(self.yvar)
             self.formula = '{} ~ {}'.format(self.yvar_escaped, '+'.join(self.xvars_escaped))
         if balance:
@@ -124,7 +126,7 @@ class Matcher:
                     self.models.append(res)
                     i = i + 1
                 except Exception as e:
-                    errors = errors + 1 # to avoid infinite loop for misspecified matrix
+                    errors = errors + 1  # to avoid infinite loop for misspecified matrix
                     print('Error: {}'.format(e))
             if errors >= maxerrors:
                 raise Exception("Encountered too many errors")
@@ -141,7 +143,6 @@ class Matcher:
 
         if len(self.models) != self.nmodels:
             raise Exception("Fit not complete; see above printed errors")
-
 
     def predict_scores(self):
         """
@@ -161,7 +162,7 @@ class Matcher:
     def match(self, threshold=0.001, nmatches=1, method='min', max_rand=10):
         """
         Finds suitable match(es) for each record in the minority
-        dataset, if one exists. Records are exlcuded from the final
+        dataset, if one exists. Records are excluded from the final
         matched dataset if there are no suitable matches.
 
         self.matched_data contains the matched dataset once this
@@ -170,8 +171,8 @@ class Matcher:
         Parameters
         ----------
         threshold : float
-            threshold for fuzzy matching matching
-            i.e. |score_x - score_y| >= theshold
+            threshold for matching
+            i.e. |score_x - score_y| <= threshold to define a match
         nmatches : int
             How majority profiles should be matched
             (at most) to minority profiles
@@ -191,8 +192,8 @@ class Matcher:
             print("Propensity Scores have not been calculated. Using defaults...")
             self.fit_scores()
             self.predict_scores()
-        test_scores = self.data[self.data[self.yvar]==True][['scores']]
-        ctrl_scores = self.data[self.data[self.yvar]==False][['scores']]
+        test_scores = self.data[self.data[self.yvar] == True][['scores']]
+        ctrl_scores = self.data[self.data[self.yvar] == False][['scores']]
         result, match_ids = [], []
         for i in range(len(test_scores)):
             # uf.progress(i+1, len(test_scores), 'Matching Control to Test...')
@@ -228,9 +229,9 @@ class Matcher:
 
     def balanced_sample(self, data=None):
         if not data:
-            data=self.data
-        minor, major =  data[data[self.yvar] == self.minority], \
-                        data[data[self.yvar] == self.majority]
+            data = self.data
+        minor, major = data[data[self.yvar] == self.minority], \
+                       data[data[self.yvar] == self.majority]
         return major.sample(len(minor)).append(minor, sort=True).dropna(subset=self.xvars)
 
     def plot_scores(self):
@@ -240,8 +241,8 @@ class Matcher:
         """
         assert 'scores' in self.data.columns, \
             "Propensity scores haven't been calculated, use Matcher.predict_scores()"
-        sns.distplot(self.data[self.data[self.yvar]==0].scores, label='Control')
-        sns.distplot(self.data[self.data[self.yvar]==1].scores, label='Test')
+        sns.distplot(self.data[self.data[self.yvar] == False].scores, label='Control')
+        sns.distplot(self.data[self.data[self.yvar] == True].scores, label='Test')
         plt.legend(loc='upper right')
         plt.xlim((0, 1))
         plt.title("Propensity Scores Before Matching")
@@ -259,7 +260,7 @@ class Matcher:
             Name of column on which the test should be performed
 
         Returns
-        ______
+        ------
         dict
             {'var': <col>,
              'before': <pvalue before matching>,
@@ -272,7 +273,7 @@ class Matcher:
                                                                            col))[1], 6)
             pval_after = round(stats.chi2_contingency(self.prep_prop_test(self.matched_data,
                                                                           col))[1], 6)
-            return {'var':col, 'before':pval_before, 'after':pval_after}
+            return {'var': col, 'before': pval_before, 'after': pval_after}
         else:
             print("{} is a continuous variable".format(col))
 
@@ -287,7 +288,7 @@ class Matcher:
         Kolmogorov-Smirnov Goodness of fit Test (KS-test)
             This test statistic is calculated on 1000
             permuted samples of the data, generating
-            an imperical p-value.  See pymatch.functions.ks_boot()
+            an empirical p-value.  See pymatch.functions.ks_boot()
             This is an adaptation of the ks.boot() method in
             the R "Matching" package
             https://www.rdocumentation.org/packages/Matching/versions/4.9-2/topics/ks.boot
@@ -297,7 +298,7 @@ class Matcher:
             See pymatch.functions.grouped_permutation_test()
 
         Other included Stats:
-        Standarized mean and median differences
+        Standardized mean and median differences
         How many standard deviations away are the mean/median
         between our groups before and after matching
         i.e. abs(mean(control) - mean(test)) / std(control.union(test))
@@ -319,10 +320,10 @@ class Matcher:
             if uf.is_continuous(col, self.X) and col not in self.exclude:
                 # organize data
                 trb, cob = self.test[col], self.control[col]
-                tra = self.matched_data[self.matched_data[self.yvar]==True][col]
-                coa = self.matched_data[self.matched_data[self.yvar]==False][col]
+                tra = self.matched_data[self.matched_data[self.yvar] == True][col]
+                coa = self.matched_data[self.matched_data[self.yvar] == False][col]
                 xtb, xcb = ECDF(trb), ECDF(cob)
-                xta, xca = ECDF(tra),ECDF(coa)
+                xta, xca = ECDF(tra), ECDF(coa)
 
                 # before/after stats
                 std_diff_med_before, std_diff_mean_before = uf.std_diff(trb, cob)
@@ -385,7 +386,7 @@ class Matcher:
     def compare_categorical(self, return_table=False):
         """
         Plots the proportional differences of each enumerated
-        discete column for test and control.
+        discrete column for test and control.
         i.e. <prop_test_that_have_x>  - <prop_control_that_have_x>
         Each chart title contains the results from a
         Chi-Square Test of Independence before and after
@@ -398,7 +399,7 @@ class Matcher:
             Should the function return a table with
             test results?
 
-        Return
+        Returns
         ------
         pd.DataFrame() (optional)
             Table with the p-values of the Chi-Square contingency test
@@ -467,7 +468,7 @@ class Matcher:
         counts = data.groupby([var, self.yvar]).count().reset_index()
         table = []
         for t in (0, 1):
-            os_counts = counts[counts[self.yvar] ==t]\
+            os_counts = counts[counts[self.yvar] == t]\
                                      .sort_values(var)
             cdict = {}
             for row in os_counts.iterrows():
@@ -522,7 +523,7 @@ class Matcher:
 
     def record_frequency(self):
         """
-        Calculates the frequency of specifi records in
+        Calculates the frequency of specific records in
         the matched dataset
 
         Returns
@@ -531,9 +532,8 @@ class Matcher:
             Frequency table of the number records
             matched once, twice, ..., etc.
         """
-        freqs = self.matched_data.groupby("record_id")\
-                    .count().groupby("match_id").count()\
-                    [["scores"]].reset_index()
+        freqs = self.matched_data.groupby("record_id").count()\
+                    .groupby("match_id").count()[["scores"]].reset_index()
         freqs.columns = ["freq", "n_records"]
         return freqs
 
