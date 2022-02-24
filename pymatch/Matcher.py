@@ -484,7 +484,7 @@ class Matcher:
         return len(self.matched_data[self.matched_data[self.yvar] == self.minority]) * 1.0 / \
                len(self.data[self.data[self.yvar] == self.minority])
 
-    def tune_threshold(self, method, nmatches=1, rng=np.arange(0, .001, .0001)):
+    def tune_threshold(self, method, nmatches=1, rng=np.arange(0, .001, .0001), do_plot=True):
         """
         Matches data over a grid to optimize threshold value and plots results.
 
@@ -496,21 +496,25 @@ class Matcher:
             Max number of matches per record. See pymatch.match()
         rng: : list / np.array()
             Grid of threshold values
+        do_plot : boolean
+            Indicator whether to produce a plot
 
         Returns
         -------
-        None
+        The smallest rng value for which the retained proportion is at least 95% of the max proportion observed for rng
 
         """
         results = []
         for i in rng:
             self.match(method=method, nmatches=nmatches, threshold=i)
             results.append(self.prop_retained())
-        plt.plot(rng, results)
-        plt.title("Proportion of Data retained for grid of threshold values")
-        plt.ylabel("Proportion Retained")
-        plt.xlabel("Threshold")
-        plt.xticks(rng)
+        if do_plot:
+            plt.plot(rng, results)
+            plt.title("Proportion of Data retained for grid of threshold values")
+            plt.ylabel("Proportion Retained")
+            plt.xlabel("Threshold")
+            plt.xticks(rng)
+        return rng[[r >= results[-1] * 0.95 for r in results].index(True)]
 
     def record_frequency(self):
         """
