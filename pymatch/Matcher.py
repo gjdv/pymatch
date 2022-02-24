@@ -202,7 +202,8 @@ class Matcher:
                 bool_match = abs(ctrl_scores - score) <= threshold
                 matches = ctrl_scores.loc[bool_match[bool_match.scores].index]
             elif method == 'min':
-                matches = abs(ctrl_scores - score).sort_values('scores').head(nmatches)
+                matches = abs(ctrl_scores - score)
+                matches = matches[matches['scores'] <= threshold].sort_values('scores').head(nmatches)
             else:
                 raise(AssertionError, "Invalid method parameter, use ('random', 'min')")
             if len(matches) == 0:
@@ -215,6 +216,9 @@ class Matcher:
         self.matched_data = self.data.loc[result]
         self.matched_data['match_id'] = match_ids
         self.matched_data['record_id'] = self.matched_data.index
+        n_not_matched = len(test_scores) - sum(self.matched_data['yvar'])
+        if n_not_matched > 0:
+            print("Warning: Could not find controls for %s test samples. If this is too many, consider enlarging the threshold." % n_not_matched)
 
     def select_from_design(self, cols):
         d = pd.DataFrame()
