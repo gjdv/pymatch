@@ -109,7 +109,7 @@ class Matcher:
             while i < nmodels and errors < maxerrors:
                 uf.progress(i+1, nmodels, prestr="Fitting Models on Balanced Samples")
                 # sample from majority to create balance dataset
-                df = self.balanced_sample()
+                df = self.balanced_sample()[self.xvars + [self.yvar]]
                 df = pd.concat([uf.drop_static_cols(df[df[self.yvar] == 1], yvar=self.yvar),
                                 uf.drop_static_cols(df[df[self.yvar] == 0], yvar=self.yvar)],
                                sort=True)
@@ -227,7 +227,7 @@ class Matcher:
             data=self.data
         minor, major =  data[data[self.yvar] == self.minority], \
                         data[data[self.yvar] == self.majority]
-        return major.sample(len(minor)).append(minor, sort=True).dropna()
+        return major.sample(len(minor)).append(minor, sort=True).dropna(subset=self.xvars)
 
     def plot_scores(self):
         """
